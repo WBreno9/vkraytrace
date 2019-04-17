@@ -1,0 +1,162 @@
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+#define EPSILON 0.0000001
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+struct Ray {
+    vec3 o;
+    vec3 d;
+};
+
+struct Box {
+    vec3 min;
+    vec3 max;
+};
+
+struct TriangleRef {
+    uint v0;
+    uint v1;
+    uint v2;
+};
+
+struct Pixel {
+    vec4 value;
+};
+
+struct Camera {
+    vec3 pos;
+    vec3 up;
+    vec3 forward;
+    vec3 right;
+};
+
+struct BVHTriangleRef {
+    vec3 v0, e1, e2;
+    Box bounds;
+    uint index;
+};
+
+struct BVHNode {
+    Box leftBounds;
+    Box rightBounds;
+    int isLeafBegin;
+    int rightOffsetEnd;
+};
+
+layout(set = 0, binding = 0) buffer OUT_BUFFER {
+    ivec2 imageSize;
+    Pixel outData[];
+};
+
+layout (set = 0, binding = 1) uniform CAM_BUFFER {
+    Camera cam;
+};
+
+layout (set = 0, binding = 2) buffer REF_BUFFER {
+    uint refSize;
+    BVHTriangleRef refs[];
+};
+
+layout (set = 0, binding = 3) buffer NODE_BUFFER {
+    uint nodeSize;
+    BVHNode nodes[];
+};
+
+bool intersectBox(Box b, Ray r) {
+    vec3 inv = 1.0 / r.d;
+
+    vec3 t0 = (b.min - r.o) * inv;
+    vec3 t1 = (b.max - r.o) * inv;
+
+    vec3 vmin = min(t0, t1);
+    vec3 vmax = max(t0, t1);
+
+    float tmin = max(vmin.x, max(vmin.y, vmin.z));
+    float tmax = min(vmax.x, min(vmax.y, vmax.z));
+
+    return (tmin < tmax);
+}
+
+float intersectBVHTriangleRef(BVHTriangleRef ref, Ray r) {
+    if (intersectBox(ref.bounds, r)) {
+        vec3 e1 = ref.e1;
+        vec3 e2 = ref.e2;
+
+        vec3 pvec = cross(r.d, e2);
+        vec3 tvec = r.o - ref.v0;
+        vec3 qvec = cross(tvec, e1);
+
+        float det = 1.0 / dot(pvec, e1);
+        float u = dot(tvec, pvec) * det;
+        float v = dot(r.d, qvec) * det;
+
+        float t = dot(e2, qvec) * det;
+
+        if (t < EPSILON || u < EPSILON || v < EPSILON || (u + v > 1.0))
+            return -1.0;
+            //return -1.0;
+
+        //return dot(e2, qvec) * det;
+        return 1.0;
+    } else {
+        return -1.0;
+    }
+}
+void main()
+{
+    if (gl_GlobalInvocationID.x >= imageSize.x || gl_GlobalInvocationID.y >= imageSize.y)
+        return;
+
+    vec2 uv = vec2(gl_GlobalInvocationID.xy) / imageSize;
+
+    float ratio = float(imageSize.x)/float(imageSize.y);
+
+    Ray r;
+    r.o = cam.pos;
+
+    r.d = vec3((-1.0 + 2.0 * uv) * vec2(ratio, 1.0), 1.0);
+    r.d = cam.forward + (cam.right * r.d.x) + (cam.up * r.d.y);
+    r.d = normalize(r.d);
+
+    vec4 color = vec4(0.0);
+
+    uint indexStack[64];
+    int stackIndex = 0;
+    indexStack[0] = 0;
+
+    uint index = 0;
+    while (stackIndex != -1) {
+        BVHNode node = nodes[index];
+
+        if (node.isLeafBegin >= 0) {
+            for (uint i = node.isLeafBegin; i < node.rightOffsetEnd; ++i) {
+                if (intersectBVHTriangleRef(refs[i], r) > 0.0)
+                    color += vec4(0.0, 0.0, 0.05, 0.0);
+
+            }
+
+            index = indexStack[stackIndex--];
+        } else {
+            bool r1 = intersectBox(node.leftBounds, r);
+            bool r2 = intersectBox(node.rightBounds, r);
+
+            if (!r1 && !r2) {
+                index = indexStack[stackIndex--];
+            } else {
+                if (r1) color += vec4(0.006);
+                if (r2) color += vec4(0.006);
+
+                if (r1) {
+                    if (r2) indexStack[++stackIndex] = node.rightOffsetEnd;
+                    index++;
+                } else {
+                    index = node.rightOffsetEnd;
+                }
+            }
+        }
+    }
+
+    outData[gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * imageSize.x].value = color;
+}
