@@ -64,7 +64,7 @@ BVHBuildNode* buildBVHNode(std::vector<BVHTriangleRef>& refList)
 	sortBVHRefList(refList, sortAxis);
 
   auto mid = refList.begin() + (refList.size() / 2);
-  std::vector<BVHTriangleRef> leftRefs(refList.begin(), mid+1);
+  std::vector<BVHTriangleRef> leftRefs(refList.begin(), mid);
   std::vector<BVHTriangleRef> rightRefs(mid, refList.end());
 
   node->leftBounds = refListBounds(leftRefs);

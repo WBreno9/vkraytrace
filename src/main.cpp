@@ -473,20 +473,20 @@ class ComputeApp {
 		uint32_t bufferSize = sizeof(Pixel) * imageH * imageW;
 		void* data;
 
-		mesh = loadMesh("bunny.obj").value();
+		mesh = loadMesh("suzanne.obj").value();
 		std::vector<BVHTriangleRef> refList = buildTriangleRefList(mesh.triangles, mesh.vertex_data);	
 		BVHBuildNode* buildNode = buildBVHNode(refList);
 		BVH bvh;
 		buildBVH(buildNode, bvh);
 
-		cam.lookAt(glm::vec3(0.02, 0.2, 0.2), glm::vec3(0.0, 0.1, 0.0));
+		cam.lookAt(glm::vec3(1.5), glm::vec3(0.0, 0.1, 0.0));
 
 		imageBuffer.init(device, physDevice, queueFamilyIndex, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, bufferSize);
 		uniformBuffer.init(device, physDevice, queueFamilyIndex, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(Camera));
 		refBuffer.init(device, physDevice, queueFamilyIndex, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-			sizeof(BVHTriangleRef) * bvh.refList.size() + sizeof(uint32_t));
+			sizeof(BVHTriangleRef) * bvh.refList.size() + 16);
 		nodeBuffer.init(device, physDevice, queueFamilyIndex, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, 
-			sizeof(BVHNode) * bvh.nodeList.size() + sizeof(uint32_t));
+			sizeof(BVHNode) * bvh.nodeList.size() + 16);
 
 		imageBuffer.map(0, 32, &data);
 		*((uint32_t*)data  ) = imageW;
